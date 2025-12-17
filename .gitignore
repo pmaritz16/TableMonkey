@@ -1,0 +1,8 @@
+node_modules/
+dist/
+*.log
+data/
+config-llm.txt
+config-data.txt
+commands.txt
+

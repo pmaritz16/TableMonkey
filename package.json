@@ -1,0 +1,25 @@
+{
+  "name": "tablemonkey",
+  "version": "1.0.0",
+  "description": "TableMonkey - CSV to SQL database with natural language commands",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:vite\"",
+    "dev:server": "node server.js",
+    "dev:vite": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "sql.js": "^1.10.0",
+    "vue": "^3.4.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.2.0",
+    "concurrently": "^8.2.2",
+    "vite": "^6.0.0"
+  }
+}
