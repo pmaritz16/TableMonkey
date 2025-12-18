@@ -91,6 +91,7 @@
             <input 
               v-model="recordForm[col.name]" 
               :type="getInputType(col.type)"
+              :step="getInputStep(col.type)"
               class="form-input"
             />
           </div>
@@ -349,8 +350,8 @@ export default {
           // Special command
           await handleSpecialCommand(cmd)
         } else {
-          // Normal command - send to LLM
-          log(`Sending to LLM: ${cmd}`)
+          // Normal command - send to LLM (macro expansion happens inside generateSQL)
+          log(`Processing command: ${cmd}`)
           const sql = await core.value.generateSQL(cmd, currentTableName.value)
           generatedSQL.value = sql
           log(`Received SQL: ${sql}`)
@@ -448,9 +449,10 @@ export default {
       
       // Set default values based on column types
       tableColumns.value.forEach(col => {
-        if (col.type === 'INTEGER') {
+        const colType = col.type.toUpperCase()
+        if (colType === 'INTEGER' || colType === 'INT') {
           recordForm.value[col.name] = 0
-        } else if (col.type === 'REAL') {
+        } else if (colType === 'REAL') {
           recordForm.value[col.name] = 0.0
         } else {
           recordForm.value[col.name] = ''
@@ -489,18 +491,24 @@ export default {
         // Validate types
         for (const col of tableColumns.value) {
           const value = recordForm.value[col.name]
-          if (col.type === 'INTEGER') {
+          const colType = col.type.toUpperCase()
+          if (colType === 'INTEGER' || colType === 'INT') {
             const intVal = parseInt(value)
             if (isNaN(intVal)) {
               throw new Error(`Invalid INTEGER value for ${col.name}`)
             }
             recordForm.value[col.name] = intVal
-          } else if (col.type === 'REAL') {
-            const floatVal = parseFloat(value)
-            if (isNaN(floatVal)) {
-              throw new Error(`Invalid REAL value for ${col.name}`)
+          } else if (colType === 'REAL') {
+            // Handle empty string or null/undefined
+            if (value === '' || value === null || value === undefined) {
+              recordForm.value[col.name] = 0.0
+            } else {
+              const floatVal = parseFloat(value)
+              if (isNaN(floatVal)) {
+                throw new Error(`Invalid REAL value for ${col.name}`)
+              }
+              recordForm.value[col.name] = floatVal
             }
-            recordForm.value[col.name] = floatVal
           }
         }
         
@@ -527,9 +535,17 @@ export default {
     }
     
     const getInputType = (colType) => {
-      if (colType === 'INTEGER') return 'number'
-      if (colType === 'REAL') return 'number'
+      const normalizedType = colType.toUpperCase()
+      if (normalizedType === 'INTEGER' || normalizedType === 'INT') return 'number'
+      if (normalizedType === 'REAL') return 'number'
       return 'text'
+    }
+    
+    const getInputStep = (colType) => {
+      const normalizedType = colType.toUpperCase()
+      if (normalizedType === 'REAL') return 'any'
+      if (normalizedType === 'INTEGER' || normalizedType === 'INT') return '1'
+      return undefined
     }
     
     const showAlertDialog = (title, message) => {
@@ -543,25 +559,23 @@ export default {
     }
     
     const restart = async () => {
-      if (confirm('Are you sure you want to restart? All data will be reset.')) {
-        // Reset all state
-        core.value = null
-        error.value = null
-        loading.value = true
-        initialized.value = false
-        tableNames.value = []
-        currentTableName.value = ''
-        tableData.value = []
-        tableColumns.value = []
-        commandText.value = ''
-        generatedSQL.value = ''
-        selectedRowIndex.value = null
-        lastCommandSuccess.value = false
-        processing.value = false
-        
-        // Reinitialize
-        await initialize()
-      }
+      // Reset all state
+      core.value = null
+      error.value = null
+      loading.value = true
+      initialized.value = false
+      tableNames.value = []
+      currentTableName.value = ''
+      tableData.value = []
+      tableColumns.value = []
+      commandText.value = ''
+      generatedSQL.value = ''
+      selectedRowIndex.value = null
+      lastCommandSuccess.value = false
+      processing.value = false
+      
+      // Reinitialize
+      await initialize()
     }
     
     watch(currentTableName, () => {
@@ -607,7 +621,8 @@ export default {
       dismissAlert,
       restart,
       loadTableData,
-      processCommandsFile
+      processCommandsFile,
+      getInputStep
     }
   }
 }

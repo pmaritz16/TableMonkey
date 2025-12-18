@@ -4,6 +4,7 @@ export class TableMonkeyCore {
     this.db = null
     this.llmConfig = null
     this.csvFiles = []
+    this.macros = {}
   }
 
   async log(message) {
@@ -37,6 +38,9 @@ export class TableMonkeyCore {
       
       // Read data config
       await this.loadDataConfig()
+      
+      // Load macros
+      await this.loadMacros()
       
       // Initialize database
       this.db = new this.SQL.Database()
@@ -115,6 +119,138 @@ export class TableMonkeyCore {
       .filter(l => l && !l.startsWith('#'))
     
     this.log(`Loaded ${this.csvFiles.length} CSV file paths`)
+  }
+
+  async loadMacros() {
+    try {
+      this.log('Reading macros.txt file')
+      const response = await fetch('/api/macros.txt')
+      if (!response.ok) {
+        this.log('macros.txt file not found, no macros loaded')
+        this.macros = {}
+        return
+      }
+      
+      const content = await response.text()
+      const lines = content.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#'))
+      
+      this.macros = {}
+      for (const line of lines) {
+        const colonIndex = line.indexOf(':')
+        if (colonIndex === -1) {
+          this.log(`Invalid macro format (missing colon): ${line}`)
+          continue
+        }
+        
+        const macroName = line.substring(0, colonIndex).trim()
+        const macroBody = line.substring(colonIndex + 1).trim()
+        
+        if (!macroName) {
+          this.log(`Invalid macro format (empty name): ${line}`)
+          continue
+        }
+        
+        this.macros[macroName] = macroBody
+        this.log(`Loaded macro: ${macroName}`)
+      }
+      
+      const macroCount = Object.keys(this.macros).length
+      this.log(`Successfully read macros.txt file: ${macroCount} macro(s) loaded`)
+    } catch (err) {
+      this.log(`Error reading macros.txt file: ${err.message}`)
+      this.macros = {}
+    }
+  }
+
+  expandMacro(commandText) {
+    // Check if command starts with *
+    if (!commandText.trim().startsWith('*')) {
+      return { isMacro: false, expandedText: commandText }
+    }
+    
+    // Parse macro invocation: *macroName param1 param2 ...
+    const trimmed = commandText.trim()
+    const parts = []
+    let current = ''
+    let inQuotes = false
+    let quoteChar = null
+    
+    // Skip the leading *
+    let i = 1
+    while (i < trimmed.length && trimmed[i] === ' ') {
+      i++
+    }
+    
+    // Parse macro name and parameters
+    while (i < trimmed.length) {
+      const char = trimmed[i]
+      
+      if (char === '"' || char === "'") {
+        if (!inQuotes) {
+          // Opening quote
+          inQuotes = true
+          quoteChar = char
+          i++
+          continue
+        } else if (char === quoteChar) {
+          // Closing quote
+          inQuotes = false
+          quoteChar = null
+          parts.push(current)
+          current = ''
+          i++
+          // Skip spaces after closing quote
+          while (i < trimmed.length && trimmed[i] === ' ') {
+            i++
+          }
+          continue
+        }
+      }
+      
+      if (char === ' ' && !inQuotes) {
+        if (current) {
+          parts.push(current)
+          current = ''
+        }
+        i++
+        continue
+      }
+      
+      current += char
+      i++
+    }
+    
+    if (current) {
+      parts.push(current)
+    }
+    
+    if (parts.length === 0) {
+      throw new Error('Invalid macro syntax: macro name required')
+    }
+    
+    const macroName = parts[0]
+    const parameters = parts.slice(1)
+    
+    // Check if macro exists
+    if (!this.macros[macroName]) {
+      throw new Error(`Macro "${macroName}" not found`)
+    }
+    
+    // Get macro body
+    let macroBody = this.macros[macroName]
+    
+    // Substitute parameters: __1, __2, etc.
+    for (let paramIndex = 0; paramIndex < parameters.length; paramIndex++) {
+      const paramNum = paramIndex + 1
+      const paramValue = parameters[paramIndex]
+      const placeholder = `__${paramNum}`
+      
+      // Replace all occurrences of __1, __2, etc.
+      macroBody = macroBody.replace(new RegExp(`__${paramNum}`, 'g'), paramValue)
+    }
+    
+    this.log(`Expanded macro ${macroName} with ${parameters.length} parameters`)
+    return { isMacro: true, expandedText: macroBody }
   }
 
   async loadCSVFiles() {
@@ -248,7 +384,11 @@ export class TableMonkeyCore {
       // Get column type from schema
       const schemaResult = this.db.exec(`PRAGMA table_info(${this.escapeIdentifier(tableName)})`)
       const colInfo = schemaResult[0].values.find(row => row[1] === name)
-      const type = colInfo ? colInfo[2] : 'TEXT'
+      let type = colInfo ? colInfo[2] : 'TEXT'
+      // Normalize INT to INTEGER for consistency
+      if (type === 'INT') {
+        type = 'INTEGER'
+      }
       return { name, type }
     })
     
@@ -264,7 +404,20 @@ export class TableMonkeyCore {
   }
 
   async generateSQL(naturalLanguage, defaultTable) {
-    this.log(`Generating SQL for: ${naturalLanguage}`)
+    // Check for macro expansion first
+    let expandedCommand = naturalLanguage
+    try {
+      const macroResult = this.expandMacro(naturalLanguage)
+      if (macroResult.isMacro) {
+        expandedCommand = macroResult.expandedText
+        this.log(`Macro expanded to: ${expandedCommand}`)
+      }
+    } catch (err) {
+      this.log(`Macro expansion error: ${err.message}`)
+      throw err
+    }
+    
+    this.log(`Generating SQL for: ${expandedCommand}`)
     
     const prompt = `You are a SQL expert. Generate SQLite SQL queries based on natural language requests.
 
@@ -276,7 +429,7 @@ Rules:
 - Make sure the SQL is valid and can be executed directly
 - If the query involves a table, use the table name from the context
 
-Natural language request: ${naturalLanguage}
+Natural language request: ${expandedCommand}
 
 SQL:`
 
@@ -452,8 +605,21 @@ SQL:`
       }
     }
     
+    // Check for macro expansion before SQL generation
+    let commandToProcess = line
+    try {
+      const macroResult = this.expandMacro(line)
+      if (macroResult.isMacro) {
+        commandToProcess = macroResult.expandedText
+        this.log(`Macro expanded to: ${commandToProcess}`)
+      }
+    } catch (err) {
+      this.log(`Macro expansion error: ${err.message}`)
+      throw err
+    }
+    
     // Normal command - needs SQL generation
-    const sql = await this.generateSQL(line, defaultTable)
+    const sql = await this.generateSQL(commandToProcess, defaultTable)
     const result = await this.executeSQL(sql)
     
     if (!result.success) {

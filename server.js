@@ -75,6 +75,14 @@ app.get('/api/config-data.txt', (req, res) => {
   res.sendFile(CONFIG_DATA)
 })
 
+app.get('/api/macros.txt', (req, res) => {
+  const macrosFile = join(DATA_DIR, 'macros.txt')
+  if (!existsSync(macrosFile)) {
+    return res.status(404).send('macros.txt not found')
+  }
+  res.sendFile(macrosFile)
+})
+
 app.get('/api/data/:filename', (req, res) => {
   const filePath = join(DATA_DIR, req.params.filename)
   if (!existsSync(filePath)) {
