@@ -147,7 +147,11 @@ export class TableMonkeyCore {
     const columns = schemaLine.split(',').map(col => {
       const parts = col.split(':')
       const name = parts[0].trim()
-      const type = parts.length > 1 ? parts[1].trim().toUpperCase() : 'TEXT'
+      let type = parts.length > 1 ? parts[1].trim().toUpperCase() : 'TEXT'
+      // Accept INT as synonym for INTEGER
+      if (type === 'INT') {
+        type = 'INTEGER'
+      }
       if (!['TEXT', 'INTEGER', 'REAL'].includes(type)) {
         throw new Error(`Invalid column type: ${type}`)
       }

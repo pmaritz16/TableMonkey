@@ -34,8 +34,8 @@ if (existsSync(join(__dirname, 'dist'))) {
 
 const DATA_DIR = join(__dirname, 'data')
 const CONFIG_LLM = join(__dirname, 'config-llm.txt')
-const CONFIG_DATA = join(__dirname, 'config-data.txt')
-const COMMANDS_FILE = join(__dirname, 'commands.txt')
+const CONFIG_DATA = join(DATA_DIR, 'config-data.txt')
+const COMMANDS_FILE = join(DATA_DIR, 'commands.txt')
 const LOG_FILE = join(__dirname, 'main.log')
 
 // Ensure data directory exists

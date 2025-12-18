@@ -20,14 +20,14 @@ npm install
 
 2. Create configuration files:
 
-   - `config-llm.txt` - LLM configuration:
+   - `config-llm.txt` - LLM configuration (in the root directory):
      ```
      address: localhost
      port: 11434
      model: llama2
      ```
    
-   - `config-data.txt` - List of CSV files to load (one per line):
+   - `data/config-data.txt` - List of CSV files to load (one per line, in the data directory):
      ```
      example.csv
      ```
@@ -61,7 +61,7 @@ This will start both the API server (port 3000) and the Vite dev server (port 51
 
 ## Commands.txt Format
 
-Commands can be stored in `commands.txt`:
+Commands can be stored in `data/commands.txt`:
 - Plain text commands (will be sent to LLM)
 - Special commands starting with `!`:
   - `!REM ...` - Remark (no action)
